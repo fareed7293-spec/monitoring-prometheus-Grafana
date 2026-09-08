@@ -1,0 +1,14 @@
+# templates/prometheus-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-prometheus-pvc
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+    - {{ .Values.storage.accessMode }}
+  storageClassName: {{ .Values.storage.className | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.prometheus.storageSize }}
+---

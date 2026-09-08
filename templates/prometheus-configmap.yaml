@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-prometheus-config
+  namespace: {{ .Release.Namespace }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['{{ .Release.Name }}-alertmanager:9093']
+
+    rule_files:
+      - /etc/prometheus/alerting_rules.yml
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # In-Cluster Node Exporter
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: "{{ .Release.Name }}-node-exporter"
+
+      # Pod/Container Resource Metrics via Kubelet cAdvisor
+      - job_name: 'kubernetes-cadvisor'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - source_labels: [__address__]
+            regex: '(.*):10250'
+            replacement: '${1}:10250'
+            target_label: __address__
+          - target_label: __metrics_path__
+            replacement: /metrics/cadvisor
+
+      # Cluster Object Health & State
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['{{ .Release.Name }}-kube-state-metrics:8080']
+
+      # Dynamic Pod Discovery via Annotations
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: kubernetes_pod_name
+
+      {{- if .Values.externalScrapes.enabled }}
+      - job_name: 'external-nodes'
+        static_configs:
+          - targets:
+            {{- toYaml .Values.externalScrapes.targets | nindent 12 }}
+      {{- end }}
+
+  alerting_rules.yml: |
+    groups:
+      - name: cluster-hardware-alerts
+        rules:
+          - alert: HostDiskFillingUp
+            expr: (node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"} < 15
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Host disk space critically low on {{ "{{" }} $labels.instance {{ "}}" }}"
+              description: "Root partition on {{ "{{" }} $labels.instance {{ "}}" }} has less than 15% free space remaining."
+
+          - alert: HostMemoryUnderPressure
+            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Node memory pressure on {{ "{{" }} $labels.instance {{ "}}" }}"
+              description: "RAM consumption on {{ "{{" }} $labels.instance {{ "}}" }} has exceeded 90%."
+
+      - name: kubernetes-workload-alerts
+        rules:
+          - alert: PodFrequentRestarts
+            expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 > 2
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ "{{" }} $labels.pod {{ "}}" }} is restarting frequently"
+              description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} in namespace {{ "{{" }} $labels.namespace {{ "}}" }} restarted more than 2 times in 15 minutes."
