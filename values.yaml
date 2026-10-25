@@ -37,8 +37,14 @@ grafana:
   adminPassword: "adminPassword123!"
   storageSize: "5Gi"
   service:
-    type: NodePort
-    nodePort: 30300
+    type: LoadBalancer
+    loadBalancerIP: "192.168.1.126" # Dedicated secondary LAN IP for Grafana
+    annotations:
+      lbipam.cilium.io/ips: "192.168.1.126"
+    labels:
+      io.cilium/loadbalancer-mode: "l2"
+    #type: NodePort
+    #nodePort: 30300
   resources:
     requests:
       cpu: 10m
@@ -52,3 +58,9 @@ nodeExporter:
   image:
     repository: prom/node-exporter
     tag: "v1.8.0"
+
+tracing:
+  enabled: true
+  tempo:
+    storageSize: "5Gi"
+    storageClassName: "nfs-fast-retain"

@@ -1,0 +1,5 @@
+*.tgz
+.DS_Store
+*.swp
+*.bak
+rendered-manifests/

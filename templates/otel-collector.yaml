@@ -1,0 +1,70 @@
+{{- if .Values.tracing.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-otel-collector-config
+  namespace: {{ .Release.Namespace }}
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+    processors:
+      batch:
+    exporters:
+      otlp:
+        endpoint: "monitoring-tempo.{{ .Release.Namespace }}.svc.cluster.local:4317"
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-otel-collector
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitoring-otel-collector
+  template:
+    metadata:
+      labels:
+        app: monitoring-otel-collector
+    spec:
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:latest
+        args: ["--config=/etc/otel-collector-config.yaml"]
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/otel-collector-config.yaml
+          subPath: otel-collector-config.yaml
+        ports:
+        - containerPort: 4317
+          name: otlp-grpc
+      volumes:
+      - name: config-volume
+        configMap:
+          name: monitoring-otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-otel-collector
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+    - port: 4317
+      name: otlp-grpc
+  selector:
+    app: monitoring-otel-collector
+{{- end -}}

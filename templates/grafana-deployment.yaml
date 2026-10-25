@@ -15,6 +15,16 @@ data:
         isDefault: true
         jsonData:
           timeInterval: 15s
+{{- if .Values.tracing.enabled }}
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://monitoring-tempo.{{ .Release.Namespace }}.svc.cluster.local:3200
+        jsonData:
+          httpMethod: GET
+          serviceMap:
+            datasourceUid: Prometheus
+{{- end }}
 ---
 # templates/grafana-pvc.yaml
 apiVersion: v1
@@ -86,13 +96,25 @@ kind: Service
 metadata:
   name: {{ .Release.Name }}-grafana
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}-grafana
+    {{- if and .Values.grafana.service.labels (eq .Values.grafana.service.type "LoadBalancer") }}
+    {{- toYaml .Values.grafana.service.labels | nindent 4 }}
+    {{- end }}
+  {{- if and .Values.grafana.service.annotations (eq .Values.grafana.service.type "LoadBalancer") }}
+  annotations:
+    {{- toYaml .Values.grafana.service.annotations | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.grafana.service.type }}
+  {{- if and .Values.grafana.service.loadBalancerIP (eq .Values.grafana.service.type "LoadBalancer") }}
+  loadBalancerIP: {{ .Values.grafana.service.loadBalancerIP }}
+  {{- end }}
   ports:
     - port: 3000
       targetPort: 3000
       name: http
-      {{- if eq .Values.grafana.service.type "NodePort" }}
+      {{- if and (eq .Values.grafana.service.type "NodePort") .Values.grafana.service.nodePort }}
       nodePort: {{ .Values.grafana.service.nodePort }}
       {{- end }}
   selector:

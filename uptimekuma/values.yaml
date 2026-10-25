@@ -1,0 +1,48 @@
+# uptime-kuma-values.yaml
+replicaCount: 1
+
+image:
+  repository: louislam/uptime-kuma
+  tag: 1.23.16 # Or latest stable
+  pullPolicy: IfNotPresent
+
+# Expose via NodePort for direct access or Nginx reverse proxy
+service:
+  type: LoadBalancer
+  loadBalancerIP: "192.168.1.124" # Dedicated secondary LAN IP for Uptime Kuma
+  annotations:
+    lbipam.cilium.io/ips: "192.168.1.124"
+  labels:
+    io.cilium/loadbalancer-mode: "l2"
+#  type: NodePort
+#  port: 3001
+#  nodePort: 30001 # Or any free 30000-32767 port
+
+# Persistent SQLite database storage on NVMe
+volume:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 2Gi
+  storageClassName: "nfs-fast-retain"
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+
+hostAliases:
+  - ip: "192.168.1.53"   # LAN IP of your Nginx Reverse Proxy
+    hostnames:
+      - "immich.fareed.in"
+      - "nextcloud.fareed.in"
+      - "grafana.fareed.in"
+      - "prometheus.fareed.in"
+      - "proxmox.fareed.in"
+      - "pbs.fareed.in"
+      - "grafana.fareed.in"
+      - "vault.fareed.in"
+      - "nginx.fareed.in"

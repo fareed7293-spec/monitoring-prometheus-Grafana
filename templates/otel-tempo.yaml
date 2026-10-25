@@ -1,0 +1,84 @@
+{{- if .Values.tracing.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: monitoring-tempo-pvc
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: "{{ .Values.tracing.tempo.storageClassName }}"
+  resources:
+    requests:
+      storage: {{ .Values.tracing.tempo.storageSize }}
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-tempo-config
+  namespace: {{ .Release.Namespace }}
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/blocks
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-tempo
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitoring-tempo
+  template:
+    metadata:
+      labels:
+        app: monitoring-tempo
+    spec:
+      containers:
+      - name: tempo
+        image: grafana/tempo:latest
+        args: [ "-config.file=/etc/tempo.yaml" ]
+        ports:
+        - containerPort: 4317
+          name: otlp-grpc
+        - containerPort: 3200
+          name: http
+        volumeMounts:
+        - name: config-vol
+          mountPath: /etc/tempo.yaml
+          subPath: tempo.yaml
+      volumes:
+      - name: config-vol
+        configMap:
+          name: monitoring-tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-tempo
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+    - port: 4317
+      name: otlp-grpc
+    - port: 3200
+      name: http
+  selector:
+    app: monitoring-tempo
+{{- end -}}

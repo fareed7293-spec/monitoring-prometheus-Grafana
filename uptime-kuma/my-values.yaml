@@ -1,0 +1,33 @@
+USER-SUPPLIED VALUES:
+hostAliases:
+  - ip: 192.168.1.53
+    hostnames:
+      - immich.fareed.in
+      - nextcloud.fareed.in
+      - grafana.fareed.in
+      - prometheus.fareed.in
+      - proxmox.fareed.in
+      - pbs.fareed.in
+      - vault.fareed.in
+      - nginx.fareed.in
+image:
+  pullPolicy: IfNotPresent
+  repository: louislam/uptime-kuma
+  tag: 1.23.16
+replicaCount: 1
+resources:
+  limits:
+    cpu: 300m
+    memory: 256Mi
+  requests:
+    cpu: 20m
+    memory: 64Mi
+service:
+  nodePort: 30001
+  port: 3001
+  type: NodePort
+volume:
+  accessMode: ReadWriteOnce
+  enabled: true
+  size: 2Gi
+  storageClassName: nfs-fast-retain
